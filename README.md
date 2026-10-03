@@ -126,6 +126,21 @@ You need CMake, Ninja, a C++20 compiler and the Vulkan headers and loader. Then:
 
 `install` does what the Windows installer does: it registers the driver with `vrpathreg`, registers the overlay with SteamVR (starting with SteamVR), and turns on `activateMultipleDrivers`. Close SteamVR first. Basestation power control is not part of the Linux build; use a separate lighthouse manager for that. Disable any other space calibrator driver in SteamVR's add-on settings, or both will move your devices.
 
+### WiVRn / Monado (Linux)
+
+SpaceSync's driver only runs inside SteamVR. For WiVRn and other Monado runtimes there is `spacesync-monado`, a small companion that does the no-head-tracker setup: a one-time calibration and **Stay Aligned**. It moves your lighthouse devices by setting their tracking origin offset through libmonado (what motoc does), so it replaces motoc for this setup. Don't run both.
+
+```
+./build.sh install-monado                 build and install, no SteamVR changes
+
+spacesync-monado calibrate                hold a tracker or controller firmly against the
+                                          headset and follow the voice prompts
+spacesync-monado set-hip LHR-XXXXXXXX     optional: your waist tracker (see spacesync-monado list)
+spacesync-monado run                      apply the calibration and keep Stay Aligned running
+```
+
+Start `spacesync-monado run` from your WiVRn session script (the `application` in WiVRn's config) so it runs while the headset is connected. A running `run` pauses by itself while you calibrate. The hip tracker is optional, same as in SpaceSync: without one, headset recenters and hiccups are still handled, but not re-alignment after the headset pauses. Not available on Monado: the "tracker drives the headset" mode and per-device latency compensation, since Monado only allows moving the whole lighthouse space. Calibration lives in `~/.config/spacesync/monado.json`, the log in `~/.local/state/spacesync/monado.log`.
+
 ## Credits and license
 
 * Nyabsi for OpenVR SpaceOverride, the base this fork stands on.

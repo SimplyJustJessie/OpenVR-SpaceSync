@@ -50,3 +50,11 @@ its own implementations behind `_WIN32` checks:
 - Build: `build.sh`, CMake changes for Linux.
 
 Every file changed for the port has a "Modified by simplyyjessie" or "Added by simplyyjessie" line.
+
+## Monado companion
+
+Added by simplyyjessie on 2026-10-03: `spacesync-monado` (`src/monado/`, `include/monado/`,
+`tests/monado_tests.cpp`), a companion for WiVRn/Monado that runs SpaceSync's Stay Aligned
+(`include/driver/StayAligned.h`, unchanged) outside SteamVR, plus a no-head-tracker calibration.
+It reads poses through a headless OpenXR session (XR_MNDX_xdev_space) and applies the result as the
+lighthouse tracking origin offset through libmonado, the approach motoc (galister) uses.

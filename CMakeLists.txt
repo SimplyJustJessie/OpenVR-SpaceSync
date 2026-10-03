@@ -133,3 +133,37 @@ endif()
 
 set_property(TARGET driver_spacesync PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded")
 set_target_properties(driver_spacesync PROPERTIES PREFIX "")
+
+# Monado companion (Linux): SpaceSync calibration and Stay Aligned for
+# WiVRn/Monado, talking to the runtime through OpenXR and libmonado.
+if (NOT WIN32)
+    find_library(OPENXR_LOADER openxr_loader)
+    find_path(OPENXR_INCLUDE openxr/openxr.h)
+    if (OPENXR_LOADER AND OPENXR_INCLUDE)
+        add_executable(spacesync-monado
+            "src/monado/Main.cpp"
+            "src/monado/MonadoLink.cpp"
+            "src/monado/XrLink.cpp"
+            "src/overlay/Sound.cpp"
+        )
+        target_compile_features(spacesync-monado PRIVATE cxx_std_20)
+        target_include_directories(spacesync-monado PRIVATE
+            "${CMAKE_SOURCE_DIR}/include/monado"
+            "${CMAKE_SOURCE_DIR}/include/driver"
+            "${CMAKE_SOURCE_DIR}/include/overlay"
+            "${CMAKE_SOURCE_DIR}/include/shared"
+            "${OPENXR_INCLUDE}"
+        )
+        target_link_libraries(spacesync-monado PRIVATE
+            OpenVR::Driver Eigen PicoJSON SDL3::SDL3 ${OPENXR_LOADER} ${CMAKE_DL_LIBS})
+        target_link_options(spacesync-monado PRIVATE -static-libstdc++ -static-libgcc)
+
+        add_executable(spacesync-monado-tests "tests/monado_tests.cpp")
+        target_compile_features(spacesync-monado-tests PRIVATE cxx_std_20)
+        target_include_directories(spacesync-monado-tests PRIVATE
+            "${CMAKE_SOURCE_DIR}/include/monado" "${CMAKE_SOURCE_DIR}/include/driver")
+        target_link_libraries(spacesync-monado-tests PRIVATE OpenVR::Driver Eigen)
+    else()
+        message(STATUS "OpenXR loader not found, skipping spacesync-monado")
+    endif()
+endif()

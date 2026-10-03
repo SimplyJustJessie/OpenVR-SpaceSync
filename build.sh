@@ -8,6 +8,10 @@
 #   ./build.sh install     build + stage, then copy to $SPACESYNC_HOME
 #                          (default ~/.local/share/spacesync) and register with SteamVR
 #   ./build.sh uninstall   unregister from SteamVR and remove $SPACESYNC_HOME
+#   ./build.sh install-monado   install without touching SteamVR (WiVRn/Monado only)
+#
+# The Monado companion (spacesync-monado) is built when the OpenXR loader is
+# installed, staged next to SpaceSync and linked into ~/.local/bin on install.
 #
 # Requirements: cmake, ninja, a C++20 compiler, Vulkan headers/loader.
 # install/uninstall do what the Windows installer does: register the driver
@@ -27,8 +31,9 @@ for arg in "$@"; do
     case "$arg" in
         clean) DO_CLEAN=1 ;;
         install) ACTION=install ;;
+        install-monado) ACTION=install-monado ;;
         uninstall) ACTION=uninstall ;;
-        *) echo "Usage: $0 [clean] [install|uninstall]" >&2; exit 2 ;;
+        *) echo "Usage: $0 [clean] [install|install-monado|uninstall]" >&2; exit 2 ;;
     esac
 done
 
@@ -49,6 +54,7 @@ if [[ "$ACTION" == uninstall ]]; then
     [[ -x "$INSTALL_DIR/SpaceSync" ]] || fail "No install found in $INSTALL_DIR"
     "$(vrpathreg "$INSTALL_DIR")" removedriver "$INSTALL_DIR/driver" || true
     "$INSTALL_DIR/SpaceSync" -removemanifest || true
+    [[ -L "$HOME/.local/bin/spacesync-monado" ]] && rm -f "$HOME/.local/bin/spacesync-monado"
     rm -rf -- "$INSTALL_DIR"
     echo "[build] Uninstalled from $INSTALL_DIR"
     exit 0
@@ -77,6 +83,11 @@ fi
 echo "[build] Building ..."
 cmake --build "$BUILD_DIR"
 
+if [[ -x "$BUILD_DIR/spacesync-monado-tests" ]]; then
+    echo "[build] Running Monado companion tests ..."
+    "$BUILD_DIR/spacesync-monado-tests" > "$BUILD_DIR/monado-tests.log" || { cat "$BUILD_DIR/monado-tests.log"; fail "Monado companion tests failed."; }
+fi
+
 # Same layout the Windows installer produces: app files at the top,
 # the SteamVR driver in driver/.
 echo "[build] Staging into $STAGE ..."
@@ -91,11 +102,23 @@ cp -f "$ROOT"/src/sound/*.wav "$STAGE/sound/"
 cp -f "$ROOT/resources/Basestation 2.0/"*.png "$STAGE/images/"
 cp -f "$ROOT/dev-resources/driver/driver.vrdrivermanifest" "$STAGE/driver/"
 cp -f "$BUILD_DIR/driver_spacesync.so" "$STAGE/driver/bin/linux64/"
+# Monado/WiVRn companion (calibration + Stay Aligned), uses the same sound/ folder.
+[[ -x "$BUILD_DIR/spacesync-monado" ]] && cp -f "$BUILD_DIR/spacesync-monado" "$STAGE/"
 
 if [[ "$ACTION" == build ]]; then
     echo
     echo "[build] OK: $STAGE"
     echo "[build] Run '$0 install' to install and register with SteamVR."
+    exit 0
+fi
+
+if [[ "$ACTION" == install-monado ]]; then
+    [[ -x "$STAGE/spacesync-monado" ]] || fail "spacesync-monado was not built (install the OpenXR loader: pacman -S openxr)."
+    echo "[build] Installing to $INSTALL_DIR (SteamVR registration skipped) ..."
+    mkdir -p "$INSTALL_DIR" "$HOME/.local/bin"
+    cp -a "$STAGE/." "$INSTALL_DIR/"
+    ln -sf "$INSTALL_DIR/spacesync-monado" "$HOME/.local/bin/spacesync-monado"
+    echo "[build] Installed: $HOME/.local/bin/spacesync-monado"
     exit 0
 fi
 
@@ -111,7 +134,13 @@ VRPATHREG="$(vrpathreg "$INSTALL_DIR")"
 "$INSTALL_DIR/SpaceSync" -installmanifest || fail "Could not register the overlay with SteamVR."
 "$INSTALL_DIR/SpaceSync" -activatemultipledrivers || fail "Could not enable activateMultipleDrivers."
 
+if [[ -x "$INSTALL_DIR/spacesync-monado" ]]; then
+    mkdir -p "$HOME/.local/bin"
+    ln -sf "$INSTALL_DIR/spacesync-monado" "$HOME/.local/bin/spacesync-monado"
+fi
+
 echo
 echo "[build] Installed. Start SteamVR; SpaceSync starts with it."
+echo "[build] WiVRn/Monado: spacesync-monado calibrate, then spacesync-monado run in your session."
 echo "[build] Desktop window without SteamVR: $INSTALL_DIR/SpaceSync -ui"
 echo "[build] Logs: ${XDG_STATE_HOME:-$HOME/.local/state}/spacesync/"

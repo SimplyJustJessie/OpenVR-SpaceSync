@@ -481,6 +481,16 @@ static bool g_tracking_lost = false;
 static uint64_t g_tracking_lost_time = 0;
 
 #define APP_KEY     "Shinyflvres.SpaceSync"
+
+// SteamVR keeps an app's autolaunch flag in vrappconfig/<key>.vrappconfig,
+// written with the key exactly as passed but read back after a restart under
+// the lowercased key. Windows filenames ignore case; on Linux only the
+// lowercase name survives a SteamVR restart.
+#ifdef _WIN32
+#define AUTOLAUNCH_KEY APP_KEY
+#else
+#define AUTOLAUNCH_KEY "shinyflvres.spacesync"
+#endif
 #define APP_NAME    "SpaceSync"
 #define NOTIFY_KEY  "Shinyflvres.SpaceSyncNotifier"
 
@@ -656,7 +666,7 @@ int main(int argc, char** argv)
 
         if (!AutoLaunchInitialized() && OpenVRManifestInstalled(APP_KEY))
         {
-            vr::EVRApplicationError autoErr = vr::VRApplications()->SetApplicationAutoLaunch(APP_KEY, true);
+            vr::EVRApplicationError autoErr = vr::VRApplications()->SetApplicationAutoLaunch(AUTOLAUNCH_KEY, true);
             if (autoErr == vr::VRApplicationError_None)
             {
                 MarkAutoLaunchInitialized();
@@ -1126,7 +1136,7 @@ static int WriteManifestRegistration(bool install)
 #else
         mkdir(dir.c_str(), 0755);
 #endif
-        ok = EditJsonFile(dir + kPathSep + APP_KEY + ".vrappconfig", [](picojson::object& obj) {
+        ok = EditJsonFile(dir + kPathSep + AUTOLAUNCH_KEY + ".vrappconfig", [](picojson::object& obj) {
             obj["autolaunch"] = picojson::value(true);
             if (obj.find("last_launch_time") == obj.end())
                 obj["last_launch_time"] = picojson::value(std::string("0"));

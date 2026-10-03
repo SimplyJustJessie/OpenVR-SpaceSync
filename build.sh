@@ -10,7 +10,7 @@
 #   ./build.sh uninstall   unregister from SteamVR and remove $SPACESYNC_HOME
 #   ./build.sh install-monado   install without touching SteamVR (WiVRn/Monado only)
 #
-# The Monado companion (spacesync-monado) is built when the OpenXR loader is
+# The experimental Monado companion (spacesync-monado) is built when the OpenXR loader is
 # installed, staged next to SpaceSync and linked into ~/.local/bin on install.
 #
 # Requirements: cmake, ninja, a C++20 compiler, Vulkan headers/loader.
@@ -118,7 +118,7 @@ if [[ "$ACTION" == install-monado ]]; then
     mkdir -p "$INSTALL_DIR" "$HOME/.local/bin"
     cp -a "$STAGE/." "$INSTALL_DIR/"
     ln -sf "$INSTALL_DIR/spacesync-monado" "$HOME/.local/bin/spacesync-monado"
-    echo "[build] Installed: $HOME/.local/bin/spacesync-monado"
+    echo "[build] Installed: $HOME/.local/bin/spacesync-monado (experimental, not yet tested on hardware)"
     exit 0
 fi
 
@@ -141,6 +141,6 @@ fi
 
 echo
 echo "[build] Installed. Start SteamVR; SpaceSync starts with it."
-echo "[build] WiVRn/Monado: spacesync-monado calibrate, then spacesync-monado run in your session."
+echo "[build] WiVRn/Monado (experimental): spacesync-monado calibrate, then spacesync-monado run in your session."
 echo "[build] Desktop window without SteamVR: $INSTALL_DIR/SpaceSync -ui"
 echo "[build] Logs: ${XDG_STATE_HOME:-$HOME/.local/state}/spacesync/"

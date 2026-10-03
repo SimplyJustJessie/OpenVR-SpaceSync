@@ -51,9 +51,9 @@ its own implementations behind `_WIN32` checks:
 
 Every file changed for the port has a "Modified by simplyyjessie" or "Added by simplyyjessie" line.
 
-## Monado companion
+## Monado companion (experimental)
 
-Added by simplyyjessie on 2026-10-03: `spacesync-monado` (`src/monado/`, `include/monado/`,
+Added by simplyyjessie on 2026-10-03, experimental and not yet tested on hardware: `spacesync-monado` (`src/monado/`, `include/monado/`,
 `tests/monado_tests.cpp`), a companion for WiVRn/Monado that runs SpaceSync's Stay Aligned
 (`include/driver/StayAligned.h`, unchanged) outside SteamVR, plus a no-head-tracker calibration.
 It reads poses through a headless OpenXR session (XR_MNDX_xdev_space) and applies the result as the

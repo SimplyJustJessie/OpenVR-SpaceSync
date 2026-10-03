@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Added by simplyyjessie, 2026-10-03 (Monado companion). Part of SpaceSync, a modified version of OpenVR-SpaceOverride by Nyabsi (AGPL-3.0). See NOTICE.md
 
-// spacesync-monado: SpaceSync's no-head-tracker calibration and Stay Aligned
+// spacesync-monado (EXPERIMENTAL, untested on hardware): SpaceSync's no-head-tracker calibration and Stay Aligned
 // for Monado-based runtimes (WiVRn). Lighthouse devices are moved by setting
 // their tracking origin offset through libmonado; poses are read through a
 // headless OpenXR session. Replaces motoc for this setup.
@@ -93,6 +93,7 @@ static bool Connect(Link& link, int waitSeconds)
 		Log("%s", error.c_str());
 		return false;
 	}
+	Log("spacesync-monado is experimental; please report problems with this log");
 	Log("using runtime %s (libmonado %s)", link.mnd.RuntimeJson().c_str(), link.mnd.Version().c_str());
 
 	auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(waitSeconds);
@@ -635,7 +636,8 @@ static int CmdSetHip(const std::string& serial)
 static void Usage()
 {
 	printf(
-		"spacesync-monado: SpaceSync calibration and Stay Aligned for WiVRn/Monado\n\n"
+		"spacesync-monado: SpaceSync calibration and Stay Aligned for WiVRn/Monado\n"
+		"EXPERIMENTAL: not yet tested against a live WiVRn session.\n\n"
 		"  calibrate [--device SERIAL] [--delay S]  hold a tracker or controller against the\n"
 		"                                           headset and follow the voice prompts\n"
 		"  run [--no-stay]                          apply the calibration and keep Stay Aligned\n"

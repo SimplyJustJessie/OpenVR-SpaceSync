@@ -8,6 +8,11 @@
 > AGPL-3.0). Modifications to the original work were made beginning on 2026-08-23 by Shinyflvres.
 > What changed is listed in [NOTICE.md](NOTICE.md). The license stays AGPL-3.0, see [LICENSE](LICENSE).
 
+> **This fork adds Linux support** (by simplyyjessie, based on [shinyflvre/OpenVR-SpaceSync](https://github.com/shinyflvre/OpenVR-SpaceSync)):
+> SpaceSync's overlay and SteamVR driver build and run natively on Linux, tested with SteamVR, Steam Link and a Quest Pro.
+> There is also an **experimental** WiVRn/Monado companion, `spacesync-monado`, not yet tested on hardware.
+> See [Building > Linux](#linux) and [WiVRn / Monado](#wivrn--monado-linux-experimental). Windows code paths are unchanged.
+
 SpaceSync keeps your lighthouse gear (Vive/Tundra trackers, Index controllers, base stations) lined up with a SLAM headset (Galaxy XR, Quest, Pico, anything streamed through Virtual Desktop, Steam Link, ALVR and friends). It needs one tracker mounted on the headset. That tracker tells the driver how the two tracking systems relate every frame, so nothing drifts apart over time.
 
 It is a fork of Nyabsi's [OpenVR SpaceOverride](https://github.com/Nyabsi/OpenVR-SpaceOverride), which itself grew out of pushrax's [OpenVR SpaceCalibrator](https://github.com/pushrax/OpenVR-SpaceCalibrator). Big thanks to both.
@@ -126,7 +131,9 @@ You need CMake, Ninja, a C++20 compiler and the Vulkan headers and loader. Then:
 
 `install` does what the Windows installer does: it registers the driver with `vrpathreg`, registers the overlay with SteamVR (starting with SteamVR), and turns on `activateMultipleDrivers`. Close SteamVR first. Basestation power control is not part of the Linux build; use a separate lighthouse manager for that. Disable any other space calibrator driver in SteamVR's add-on settings, or both will move your devices.
 
-### WiVRn / Monado (Linux)
+### WiVRn / Monado (Linux, experimental)
+
+> **Experimental, untested on hardware.** `spacesync-monado` builds and its math is covered by synthetic tests, but it has not run against a live WiVRn session yet: SteamVR 2.18's lighthouse driver needs `IVRDriverInput_005`, which WiVRn 26.9 does not provide, so WiVRn crashes as soon as a lighthouse device connects. Expect bugs until that is resolved and it has been tested. The SteamVR version above is the supported path.
 
 SpaceSync's driver only runs inside SteamVR. For WiVRn and other Monado runtimes there is `spacesync-monado`, a small companion that does the no-head-tracker setup: a one-time calibration and **Stay Aligned**. It moves your lighthouse devices by setting their tracking origin offset through libmonado (what motoc does), so it replaces motoc for this setup. Don't run both.
 

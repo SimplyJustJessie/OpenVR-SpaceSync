@@ -31,3 +31,22 @@ Starting point was OpenVR-SpaceOverride commit `6604e42`. Since then:
 
 Every source file I touched or added has a "Modified by" or "Added by" line under its SPDX header.
 The full history is in this repo's git log.
+
+## Linux port
+
+Modified by simplyyjessie beginning on 2026-10-03, starting from OpenVR-SpaceSync commit
+`7f59d10`. Same license (AGPL-3.0-only). The Windows code paths are left as they were; Linux gets
+its own implementations behind `_WIN32` checks:
+
+- Driver: hooks swap the vtable slot instead of using MinHook, IPC uses an abstract Unix socket
+  instead of a named pipe (`IPCServerPosix.cpp`), timing uses `CLOCK_MONOTONIC`, logs go to
+  `$XDG_STATE_HOME/spacesync`.
+- Overlay: Unix socket IPC client (`IPCClientPosix.cpp`), profile in
+  `$XDG_CONFIG_HOME/spacesync/profile.json` instead of the registry, sound through SDL3 audio,
+  single instance and desktop/SteamVR handover over an abstract Unix socket, a generated SteamVR
+  manifest with an absolute binary path, X11/Wayland Vulkan surface extensions, Noto CJK fonts.
+- Basestation power control is not part of the Linux build (`LighthousePosix.cpp` keeps only the
+  app log); a separate lighthouse manager handles it.
+- Build: `build.sh`, CMake changes for Linux.
+
+Every file changed for the port has a "Modified by simplyyjessie" or "Added by simplyyjessie" line.

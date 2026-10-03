@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Modified by Shinyflvres, 2026-08-23. Part of SpaceSync, a modified version of OpenVR-SpaceOverride by Nyabsi (AGPL-3.0). See NOTICE.md
+// Modified by simplyyjessie, 2026-10-03 (Linux port). See NOTICE.md
 
 #include "UserInterface.h"
 #include "Calibration.h"
@@ -745,7 +746,7 @@ void UserInterface::RenderPreview()
 static ImTextureData* LoadImageTexture(const char* file)
 {
 	const char* base = SDL_GetBasePath();
-	std::string path = std::string(base ? base : "") + "images\\" + file;
+	std::string path = std::string(base ? base : "") + "images/" + file;
 	SDL_Surface* loaded = SDL_LoadPNG(path.c_str());
 	if (!loaded)
 		return nullptr;
@@ -806,6 +807,16 @@ static const StationImages& GetStationImages()
 void UserInterface::RenderLighthouse()
 {
 	const float maxW = std::min(820.0f, PageDesignWidth());
+
+#ifndef _WIN32
+	// The Linux build leaves basestation power to a dedicated tool.
+	Text(F.regular, 13.0f, P.yellow, "Basestation power control is not part of the Linux build.");
+	VSpace(8.0f);
+	TextWrapped(F.regular, 12.5f, P.textDim, maxW,
+		"Use a separate lighthouse manager, such as simply-lighthouse-manager, to wake and sleep your basestations.");
+	return;
+#endif
+
 	lighthouse::EnsureScanning();
 
 	TextWrapped(F.regular, 13.0f, P.textMuted, maxW,

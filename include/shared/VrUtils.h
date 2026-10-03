@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+// Modified by simplyyjessie, 2026-10-03 (Linux port). See NOTICE.md
 
 #pragma once
 
@@ -31,7 +32,11 @@ static auto OpenVRManifestInstalled(const char* appKey) -> bool
 
 static auto OpenVRManifestInstall(const std::string& directory) -> void
 {
+#ifdef _WIN32
     std::string manifestPath = directory + "\\manifest.vrmanifest";
+#else
+    std::string manifestPath = directory + "/manifest.vrmanifest";
+#endif
 
     vr::EVRApplicationError result = vr::VRApplications()->AddApplicationManifest(manifestPath.data());
     if (result > vr::VRApplicationError_None)

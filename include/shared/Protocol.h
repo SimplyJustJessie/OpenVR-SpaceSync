@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Modified by Shinyflvres, 2026-08-23. Part of SpaceSync, a modified version of OpenVR-SpaceOverride by Nyabsi (AGPL-3.0). See NOTICE.md
+// Modified by simplyyjessie, 2026-10-03 (Linux port). See NOTICE.md
 
 #pragma once
 
@@ -10,6 +11,9 @@
 #endif
 
 #define SPACESYNC_PIPE_NAME "\\\\.\\pipe\\SpaceSyncCom"
+// Linux: abstract Unix socket name (leading NUL is added at use). Abstract
+// names need no file on disk, so nothing is left behind if vrserver crashes.
+#define SPACESYNC_SOCKET_NAME "SpaceSyncCom"
 
 namespace protocol
 {

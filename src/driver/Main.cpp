@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+// Modified by simplyyjessie, 2026-10-03 (Linux port). See NOTICE.md
 
 #include "Main.h"
 #include "ServerTrackedDeviceProvider.h"
@@ -11,7 +12,7 @@
 #ifdef _WIN32
 #define EXPORT_FUNC extern "C" __declspec(dllexport)
 #else
-#define EXPORT_FUNC extern "C"
+#define EXPORT_FUNC extern "C" __attribute__((visibility("default")))
 #endif
 
 ServerTrackedDeviceProvider g_server;

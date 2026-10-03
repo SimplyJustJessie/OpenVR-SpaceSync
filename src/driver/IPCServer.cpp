@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Modified by Shinyflvres, 2026-08-23. Part of SpaceSync, a modified version of OpenVR-SpaceOverride by Nyabsi (AGPL-3.0). See NOTICE.md
+// Modified by simplyyjessie, 2026-10-03 (Linux port). See NOTICE.md
 
 #include "IPCServer.h"
 #include "Logging.h"
@@ -60,6 +61,7 @@ void IPCServer::Run()
 	mainThread = std::thread(RunThread, this);
 }
 
+#ifdef _WIN32
 void IPCServer::Stop()
 {
 	TRACE("IPCServer::Stop()");
@@ -246,3 +248,4 @@ void IPCServer::CompletedWriteCallback(DWORD err, DWORD bytesWritten, LPOVERLAPP
 		pipeInst->server->ClosePipeInstance(pipeInst);
 	}
 }
+#endif

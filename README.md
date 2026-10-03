@@ -90,6 +90,8 @@ If the result feels off, choose a slower calibration speed in Settings and run i
 
 **The app says the head tracker seems to have moved.** The driver keeps refining the mount offset while you play and corrects small shifts on its own (the refined values are saved back into your profile). If that correction grows past a few degrees or centimetres, you get the yellow line under the circle. A fresh calibration is the clean fix.
 
+**Logs on Linux.** Driver, overlay and universe probe logs are all in `~/.local/state/spacesync/` (or `$XDG_STATE_HOME/spacesync`).
+
 **SpaceSync says the driver is unavailable.** SteamVR has to be running and the SpaceSync add on has to be enabled under SteamVR Settings > Startup / Shutdown > Manage Add ons. Overlay and driver must come from the same build. The installer takes care of that.
 
 **My calibration feels odd.** Recalibrate with a slower speed, move smoothly, and make sure the tracker cannot wobble on the headset.
@@ -107,6 +109,22 @@ build.bat clean      wipe the build folder first
 ```
 
 The installer lands in `dev-resources\SpaceSync_Installer.exe`. Git submodules are pulled automatically if they are missing.
+
+### Linux
+
+You need CMake, Ninja, a C++20 compiler and the Vulkan headers and loader. Then:
+
+```
+./build.sh             configure, build, stage into out/linux/SpaceSync
+
+./build.sh install     also install to ~/.local/share/spacesync and register with SteamVR
+
+./build.sh uninstall   unregister and remove the install
+
+./build.sh clean       wipe the build folder first
+```
+
+`install` does what the Windows installer does: it registers the driver with `vrpathreg`, registers the overlay with SteamVR (starting with SteamVR), and turns on `activateMultipleDrivers`. Close SteamVR first. Basestation power control is not part of the Linux build; use a separate lighthouse manager for that. Disable any other space calibrator driver in SteamVR's add-on settings, or both will move your devices.
 
 ## Credits and license
 

@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Added by Shinyflvres, 2026-09-29. Part of SpaceSync, a modified version of OpenVR-SpaceOverride by Nyabsi (AGPL-3.0). See NOTICE.md
+// Modified by simplyyjessie, 2026-10-03 (Linux port). See NOTICE.md
 
 #pragma once
 
+#include "Logging.h"
 #include "PoseMath.h"
 
 #include <openvr_driver.h>
-#include <windows.h>
+#include "PlatformTime.h"
 
 #include <cstdio>
 #include <deque>
@@ -45,7 +47,7 @@ namespace universe
 	{
 	public:
 		std::function<void(uint32_t, int32_t&, std::string&, std::string&, std::string&)> properties;
-		std::string path = "spacesync_universe.log";
+		std::string path = DriverLogPath("spacesync_universe.log");
 
 		~Probe()
 		{
@@ -142,8 +144,13 @@ namespace universe
 			if (existing)
 			{
 				long long size = 0;
+#ifdef _WIN32
 				if (_fseeki64(existing, 0, SEEK_END) == 0)
 					size = _ftelli64(existing);
+#else
+				if (fseeko(existing, 0, SEEK_END) == 0)
+					size = ftello(existing);
+#endif
 				fclose(existing);
 				if (size > 50ll * 1024 * 1024)
 				{
@@ -161,9 +168,17 @@ namespace universe
 
 		void stamp(char* buf, size_t n)
 		{
+#ifdef _WIN32
 			SYSTEMTIME st;
 			GetLocalTime(&st);
 			std::snprintf(buf, n, "%02d:%02d:%02d.%03d", st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
+#else
+			timespec ts;
+			clock_gettime(CLOCK_REALTIME, &ts);
+			tm local;
+			localtime_r(&ts.tv_sec, &local);
+			std::snprintf(buf, n, "%02d:%02d:%02d.%03d", local.tm_hour, local.tm_min, local.tm_sec, (int)(ts.tv_nsec / 1000000));
+#endif
 		}
 
 		template <typename... Args>

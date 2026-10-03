@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Added by Shinyflvres, 2026-08-23. Part of SpaceSync, a modified version of OpenVR-SpaceOverride by Nyabsi (AGPL-3.0). See NOTICE.md
+// Modified by simplyyjessie, 2026-10-03 (Linux port). See NOTICE.md
 
 #include "Theme.h"
 #include "EmbeddedFiles.h"
@@ -66,8 +67,26 @@ namespace ui
 
 		const float base = FontPx(13.0f);
 
+#ifdef _WIN32
 		const char* jaCandidates[] = { "C:\\Windows\\Fonts\\YuGothM.ttc", "C:\\Windows\\Fonts\\YuGothR.ttc", "C:\\Windows\\Fonts\\meiryo.ttc" };
 		const char* scCandidates[] = { "C:\\Windows\\Fonts\\msyh.ttc", "C:\\Windows\\Fonts\\msyhl.ttc", "C:\\Windows\\Fonts\\simhei.ttf" };
+		const int jaFaceIndex = 0, scFaceIndex = 0;
+#else
+		// Noto Sans CJK ships every region in one collection: face 0 is
+		// Japanese, face 2 Simplified Chinese. Paths cover Arch, Debian/Ubuntu
+		// and Fedora.
+		const char* jaCandidates[] = {
+			"/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
+			"/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+			"/usr/share/fonts/google-noto-sans-cjk-fonts/NotoSansCJK-Regular.ttc",
+		};
+		const char* scCandidates[] = {
+			"/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
+			"/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+			"/usr/share/fonts/google-noto-sans-cjk-fonts/NotoSansCJK-Regular.ttc",
+		};
+		const int jaFaceIndex = 0, scFaceIndex = 2;
+#endif
 		const char* jaFont = nullptr;
 		const char* scFont = nullptr;
 		for (const char* p : jaCandidates) { FILE* f = fopen(p, "rb"); if (f) { fclose(f); jaFont = p; break; } }
@@ -79,10 +98,15 @@ namespace ui
 		cjk.OversampleH = 2;
 		cjk.OversampleV = 2;
 
+		ImFontConfig cjkJa = cjk;
+		cjkJa.FontNo = jaFaceIndex;
+		ImFontConfig cjkSc = cjk;
+		cjkSc.FontNo = scFaceIndex;
+
 		auto addWithCjk = [&](const void* data, int size) {
 			ImFont* font = io.Fonts->AddFontFromMemoryCompressedTTF(data, size, base, &cfg);
-			if (jaFont) io.Fonts->AddFontFromFileTTF(jaFont, base, &cjk);
-			if (scFont) io.Fonts->AddFontFromFileTTF(scFont, base, &cjk);
+			if (jaFont) io.Fonts->AddFontFromFileTTF(jaFont, base, &cjkJa);
+			if (scFont) io.Fonts->AddFontFromFileTTF(scFont, base, &cjkSc);
 			return font;
 		};
 

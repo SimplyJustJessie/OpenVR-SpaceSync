@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+// Modified by simplyyjessie, 2026-10-03 (Linux port). See NOTICE.md
 
 #include "Logging.h"
 #include "Hooking.h"
@@ -49,11 +50,15 @@ static void *DetourGetGenericInterface(void* _this, const char *pchInterfaceVers
 	auto originalInterface = GetGenericInterfaceHook.originalFunc(_this, pchInterfaceVersion, peError);
 
 	std::string iface(pchInterfaceVersion);
-	if (iface == "IVRServerDriverHost_005")
+	if (!originalInterface)
+	{
+		// Nothing to hook; the caller gets the error from peError.
+	}
+	else if (iface == "IVRServerDriverHost_005")
 	{
 		if (!IHook::Exists(TrackedDevicePoseUpdatedHook005.name))
 		{
-			TrackedDevicePoseUpdatedHook005.CreateHookInObjectVTable(originalInterface, 1, &DetourTrackedDevicePoseUpdated005);
+			TrackedDevicePoseUpdatedHook005.CreateHookInObjectVTable(originalInterface, 1, (void *)&DetourTrackedDevicePoseUpdated005);
 			IHook::Register(&TrackedDevicePoseUpdatedHook005);
 		}
 	}
@@ -61,7 +66,7 @@ static void *DetourGetGenericInterface(void* _this, const char *pchInterfaceVers
 	{
 		if (!IHook::Exists(TrackedDevicePoseUpdatedHook006.name))
 		{
-			TrackedDevicePoseUpdatedHook006.CreateHookInObjectVTable(originalInterface, 1, &DetourTrackedDevicePoseUpdated006);
+			TrackedDevicePoseUpdatedHook006.CreateHookInObjectVTable(originalInterface, 1, (void *)&DetourTrackedDevicePoseUpdated006);
 			IHook::Register(&TrackedDevicePoseUpdatedHook006); 
 		}
 	}
@@ -71,6 +76,7 @@ static void *DetourGetGenericInterface(void* _this, const char *pchInterfaceVers
 
 void InjectHooks(vr::IVRDriverContext *pDriverContext)
 {
+#ifdef _WIN32
 	auto err = MH_Initialize();
 	if (err == MH_OK)
 	{
@@ -81,10 +87,26 @@ void InjectHooks(vr::IVRDriverContext *pDriverContext)
 	{
 		LOG("MH_Initialize error: %s", MH_StatusToString(err));
 	}
+#else
+	if (GetGenericInterfaceHook.CreateHookInObjectVTable(pDriverContext, 0, (void *)&DetourGetGenericInterface))
+	{
+		IHook::Register(&GetGenericInterfaceHook);
+
+		// Drivers loaded before us (lighthouse) already fetched their driver
+		// host, so nothing may ask for it again. Ask once ourselves so the
+		// detour patches the host vtable now, which those drivers share.
+		vr::EVRInitError hostErr = vr::VRInitError_None;
+		pDriverContext->GetGenericInterface(vr::IVRServerDriverHost_Version, &hostErr);
+		if (!IHook::Exists(TrackedDevicePoseUpdatedHook006.name))
+			LOG("Pose hook not installed after host request (error %d)", (int)hostErr);
+	}
+#endif
 }
 
 void DisableHooks()
 {
 	IHook::DestroyAll();
+#ifdef _WIN32
 	MH_Uninitialize();
+#endif
 }

@@ -1,10 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Modified by Shinyflvres, 2026-08-23. Part of SpaceSync, a modified version of OpenVR-SpaceOverride by Nyabsi (AGPL-3.0). See NOTICE.md
+// Modified by simplyyjessie, 2026-10-03 (Linux port). See NOTICE.md
 
 #include "Configuration.h"
 #include "Localization.h"
 
+#ifdef _WIN32
 #include <Windows.h>
+#else
+#include "PlatformPaths.h"
+#endif
 
 #include <picojson.h>
 
@@ -388,6 +393,7 @@ static void WriteProfile(CalibrationContext &ctx, std::ostream &out)
 	out << profilesV.serialize(true);
 }
 
+#ifdef _WIN32
 static void LogRegistryResult(LSTATUS result)
 {
 	char *message;
@@ -449,6 +455,24 @@ static void WriteRegistryKey(std::string str)
 
 	RegCloseKey(hkey);
 }
+#else
+// Linux keeps the same JSON the registry value holds, in a file.
+static std::string ProfilePath()
+{
+	return paths::ConfigDir() + "/profile.json";
+}
+
+static std::string ReadRegistryKey()
+{
+	return paths::ReadFile(ProfilePath());
+}
+
+static void WriteRegistryKey(std::string str)
+{
+	if (!paths::WriteFileAtomic(ProfilePath(), str))
+		std::cerr << "Failed to write profile " << ProfilePath() << std::endl;
+}
+#endif
 
 void LoadProfile(CalibrationContext &ctx)
 {

@@ -62,10 +62,22 @@ if (OpenVR_FOUND)
     # OpenVR API requires the client DLL.
     if (NOT TARGET OpenVR::API)
         add_library(OpenVR::API SHARED IMPORTED)
+        if (WIN32)
+            set_target_properties(OpenVR::API
+                PROPERTIES
+                    IMPORTED_IMPLIB "${OpenVR_LIBRARY}"
+                    IMPORTED_LOCATION "${OpenVR_BINARY}")
+        else ()
+            # On Linux the .so is both the link and the runtime library. It has
+            # no SONAME, so without NO_SONAME the linker would record its
+            # absolute build path instead of a name the rpath can resolve.
+            set_target_properties(OpenVR::API
+                PROPERTIES
+                    IMPORTED_LOCATION "${OpenVR_LIBRARY}"
+                    IMPORTED_NO_SONAME TRUE)
+        endif ()
         set_target_properties(OpenVR::API
             PROPERTIES
-                IMPORTED_IMPLIB "${OpenVR_LIBRARY}"
-                IMPORTED_LOCATION "${OpenVR_BINARY}"
                 INTERFACE_INCLUDE_DIRECTORIES "${OpenVR_INCLUDE_DIR}")
     endif ()
 

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Modified by Shinyflvres, 2026-08-23. Part of SpaceSync, a modified version of OpenVR-SpaceOverride by Nyabsi (AGPL-3.0). See NOTICE.md
+// Modified by simplyyjessie, 2026-10-03 (Linux port). See NOTICE.md
 
 #ifdef _WIN32
 #include <Windows.h>
@@ -7,9 +8,21 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <direct.h>
 #ifdef _WIN32
+#include <direct.h>
 #include <TlHelp32.h>
+#else
+#include <dirent.h>
+#include <poll.h>
+#include <spawn.h>
+#include <sys/socket.h>
+#include <sys/stat.h>
+#include <sys/un.h>
+#include <unistd.h>
+#include <cstddef>
+#include <cstring>
+#include "PlatformPaths.h"
+extern char **environ;
 #endif
 
 #include <string>
@@ -66,9 +79,7 @@ static void BeginClose()
 {
     if (g_shutdownScreen)
         return;
-#ifdef _WIN32
     MarkExiting();
-#endif
     size_t stationCount = lighthouse::Stations().size();
     if (!g_desktopForced && !g_handoverToVrInstance && CalCtx.dynamicBasestationPower && stationCount > 0)
     {
@@ -207,6 +218,185 @@ static void MarkAutoLaunchInitialized()
     DWORD value = 1;
     RegSetKeyValueA(HKEY_CURRENT_USER, "Software\\SpaceSync", "AutoLaunchInitialized", REG_DWORD, &value, sizeof(value));
 }
+#else
+// Linux single-instance handling. An abstract Unix socket stands in for the
+// Windows named mutex and events: binding the name is exclusive, and the
+// kernel releases it when the process dies, like an abandoned mutex. A second
+// launch connects and sends one byte saying what kind of launch it is; the
+// owner answers whether to wait for it to exit (handover) or to give up
+// (the owner brings its window to the front instead).
+static int g_instanceSocket = -1;
+static bool g_isDesktopInstance = false;
+static bool g_exiting = false;
+
+static const char kInstanceSocketName[] = "SpaceSyncInstance";
+enum : char { kLaunchDesktop = 'd', kLaunchVr = 'v', kLaunchHandover = 'h' };
+enum : char { kReplyWait = 'w', kReplyExit = 'x' };
+
+static socklen_t InstanceAddress(sockaddr_un& addr)
+{
+    addr = {};
+    addr.sun_family = AF_UNIX;
+    memcpy(addr.sun_path + 1, kInstanceSocketName, sizeof kInstanceSocketName - 1);
+    return (socklen_t)(offsetof(sockaddr_un, sun_path) + sizeof kInstanceSocketName);
+}
+
+static void MarkExiting()
+{
+    g_exiting = true;
+}
+
+static bool BindInstanceSocket()
+{
+    int fd = socket(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
+    if (fd < 0)
+        return true; // can't enforce single instance; run anyway like Windows does
+    sockaddr_un addr;
+    socklen_t len = InstanceAddress(addr);
+    if (bind(fd, (sockaddr*)&addr, len) != 0 || listen(fd, 4) != 0)
+    {
+        close(fd);
+        return false;
+    }
+    g_instanceSocket = fd;
+    return true;
+}
+
+// Returns the owner's reply, or 0 if it could not be asked.
+static char AskOwner(char kind)
+{
+    int fd = socket(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0);
+    if (fd < 0)
+        return 0;
+    sockaddr_un addr;
+    socklen_t len = InstanceAddress(addr);
+    char reply = 0;
+    if (connect(fd, (sockaddr*)&addr, len) == 0 && send(fd, &kind, 1, MSG_NOSIGNAL) == 1)
+    {
+        pollfd p = { fd, POLLIN, 0 };
+        if (poll(&p, 1, 3000) > 0 && recv(fd, &reply, 1, 0) != 1)
+            reply = 0;
+    }
+    close(fd);
+    return reply;
+}
+
+static bool AcquireInstance()
+{
+    if (BindInstanceSocket())
+    {
+        g_isDesktopInstance = g_desktopPreview;
+        return true;
+    }
+
+    char kind = g_handoverLaunch ? kLaunchHandover : (g_desktopPreview ? kLaunchDesktop : kLaunchVr);
+    if (AskOwner(kind) == kReplyWait)
+    {
+        if (kind == kLaunchVr)
+            lighthouse::Note("steamvr instance: asking the desktop instance to hand over");
+        for (int i = 0; i < 240; i++)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(250));
+            if (BindInstanceSocket())
+            {
+                g_isDesktopInstance = g_desktopPreview;
+                return true;
+            }
+        }
+    }
+
+    lighthouse::Note("second launch: another instance is running, bringing it to front");
+    return false;
+}
+
+static void ReleaseInstance()
+{
+    if (g_instanceSocket >= 0)
+        close(g_instanceSocket);
+    g_instanceSocket = -1;
+}
+
+// Called by the owner once per frame. Mirrors the Windows show-window and
+// handover events.
+static void PollInstanceRequests(ImGuiWindow* window)
+{
+    if (g_instanceSocket < 0)
+        return;
+    for (;;)
+    {
+        int client = accept4(g_instanceSocket, nullptr, nullptr, SOCK_CLOEXEC);
+        if (client < 0)
+            return;
+
+        char kind = 0;
+        pollfd p = { client, POLLIN, 0 };
+        if (poll(&p, 1, 500) > 0 && recv(client, &kind, 1, 0) != 1)
+            kind = 0;
+
+        bool handover = !g_exiting && g_isDesktopInstance && (kind == kLaunchVr || kind == kLaunchHandover);
+        char reply = (g_exiting || handover) ? kReplyWait : kReplyExit;
+        send(client, &reply, 1, MSG_NOSIGNAL);
+        close(client);
+
+        if (handover)
+        {
+            lighthouse::Note("handover requested by the SteamVR instance, closing desktop instance");
+            MarkExiting();
+            g_handoverToVrInstance = true;
+            g_ticking = false;
+        }
+        else if (!g_exiting && !g_shutdownScreen && kind != 0)
+        {
+            window->ShowAndFocus();
+        }
+    }
+}
+
+static bool SteamVRProcessRunning()
+{
+    DIR* proc = opendir("/proc");
+    if (!proc)
+        return false;
+    bool found = false;
+    while (dirent* entry = readdir(proc))
+    {
+        if (entry->d_name[0] < '0' || entry->d_name[0] > '9')
+            continue;
+        std::ifstream comm(std::string("/proc/") + entry->d_name + "/comm");
+        std::string name;
+        if (std::getline(comm, name) && name == "vrserver")
+        {
+            found = true;
+            break;
+        }
+    }
+    closedir(proc);
+    return found;
+}
+
+static std::string ExePath()
+{
+    char path[4096] = {};
+    ssize_t n = readlink("/proc/self/exe", path, sizeof path - 1);
+    return n > 0 ? std::string(path, n) : std::string();
+}
+
+// Windows keeps this flag in the registry; here it is a marker file.
+static std::string AutoLaunchMarkerPath()
+{
+    return paths::ConfigDir() + "/autolaunch_initialized";
+}
+
+static bool AutoLaunchInitialized()
+{
+    struct stat st;
+    return stat(AutoLaunchMarkerPath().c_str(), &st) == 0;
+}
+
+static void MarkAutoLaunchInitialized()
+{
+    std::ofstream(AutoLaunchMarkerPath()) << "1\n";
+}
 #endif
 
 static std::string ExeDirectory()
@@ -218,9 +408,59 @@ static std::string ExeDirectory()
     size_t slash = s.find_last_of("\\/");
     return slash == std::string::npos ? std::string(".") : s.substr(0, slash);
 #else
-    return ".";
+    std::string s = ExePath();
+    size_t slash = s.find_last_of('/');
+    return slash == std::string::npos ? std::string(".") : s.substr(0, slash);
 #endif
 }
+
+#ifdef _WIN32
+static const char kPathSep = '\\';
+#else
+static const char kPathSep = '/';
+#endif
+
+#ifdef _WIN32
+// The manifest ships next to SpaceSync.exe with a relative binary path.
+static std::string ManifestDirectory()
+{
+    return ExeDirectory();
+}
+#else
+// Newer SteamVR rejects relative binary paths in manifests on Linux, so the
+// manifest SteamVR loads is generated in ~/.config/spacesync from the one
+// shipped next to the binary, with binary_path_linux set to this executable.
+static std::string ManifestDirectory()
+{
+    return paths::ConfigDir();
+}
+
+static bool WriteLinuxManifest()
+{
+    picojson::value root;
+    std::string text = paths::ReadFile(ExeDirectory() + "/manifest.vrmanifest");
+    if (text.empty() || !picojson::parse(root, text).empty() || !root.is<picojson::object>())
+    {
+        lighthouse::Note("manifest template missing or invalid next to the executable");
+        return false;
+    }
+
+    auto& obj = root.get<picojson::object>();
+    auto apps = obj.find("applications");
+    if (apps == obj.end() || !apps->second.is<picojson::array>())
+        return false;
+    for (auto& app : apps->second.get<picojson::array>())
+        if (app.is<picojson::object>())
+            app.get<picojson::object>()["binary_path_linux"] = picojson::value(ExePath());
+
+    if (!paths::WriteFileAtomic(ManifestDirectory() + "/manifest.vrmanifest", root.serialize(true)))
+    {
+        lighthouse::Note("could not write the SteamVR manifest to the config directory");
+        return false;
+    }
+    return true;
+}
+#endif
 
 #ifdef _WIN32
 extern "C" __declspec(dllexport) unsigned long NvOptimusEnablement = 0x00000001;
@@ -372,14 +612,12 @@ int main(int argc, char** argv)
         }
     }
 
-#ifdef _WIN32
     if (!AcquireInstance())
     {
         if (!g_desktopPreview)
             vr::VR_Shutdown();
         return EXIT_SUCCESS;
     }
-#endif
     if (g_desktopPreview)
     {
         char note[160];
@@ -402,9 +640,13 @@ int main(int argc, char** argv)
         UpdateApplicationRefreshRate();
 
         try {
+#ifndef _WIN32
+            // Rewritten every start so the absolute binary path follows the install.
+            WriteLinuxManifest();
+#endif
             if (!OpenVRManifestInstalled(APP_KEY))
             {
-                OpenVRManifestInstall(ExeDirectory());
+                OpenVRManifestInstall(ManifestDirectory());
                 lighthouse::Note("manifest registered with SteamVR on first run");
             }
         }
@@ -412,7 +654,6 @@ int main(int argc, char** argv)
             lighthouse::Note(ex.what());
         }
 
-#ifdef _WIN32
         if (!AutoLaunchInitialized() && OpenVRManifestInstalled(APP_KEY))
         {
             vr::EVRApplicationError autoErr = vr::VRApplications()->SetApplicationAutoLaunch(APP_KEY, true);
@@ -424,7 +665,6 @@ int main(int argc, char** argv)
             else
                 lighthouse::Note(vr::VRApplications()->GetApplicationsErrorNameFromEnum(autoErr));
         }
-#endif
     }
 
     try {
@@ -433,7 +673,7 @@ int main(int argc, char** argv)
             g_overlay->Create(vr::VROverlayType_Dashboard, APP_KEY, APP_NAME);
 
             std::string thumbnail_path = SDL_GetBasePath();
-            thumbnail_path += "\\icon.png";
+            thumbnail_path += "icon.png"; // SDL_GetBasePath() ends with a separator
             g_overlay->SetThumbnail(thumbnail_path);
 
             g_overlay->SetInputMethod(vr::VROverlayInputMethod_Mouse);
@@ -527,6 +767,8 @@ int main(int argc, char** argv)
             g_handoverToVrInstance = true;
             g_ticking = false;
         }
+#else
+        PollInstanceRequests(g_imGuiWindow);
 #endif
 
         g_imGuiWindow->SetClosing(g_shutdownScreen);
@@ -581,6 +823,43 @@ int main(int argc, char** argv)
                     }
                     else
                         lighthouse::Note("steamvr detected, but relaunch failed; staying in desktop mode");
+                }
+            }
+        }
+#else
+        if (g_ticking && g_desktopPreview && !g_desktopForced && !g_shutdownScreen)
+        {
+            static uint64_t lastVrProbe = 0;
+            uint64_t nowMs = SDL_GetTicks();
+            if (nowMs - lastVrProbe > 5000)
+            {
+                lastVrProbe = nowMs;
+                bool ready = false;
+                if (SteamVRProcessRunning())
+                {
+                    vr::EVRInitError probeErr = vr::VRInitError_None;
+                    vr::VR_Init(&probeErr, vr::VRApplication_Background);
+                    vr::VR_Shutdown();
+                    ready = probeErr == vr::VRInitError_None;
+                }
+                if (ready)
+                {
+                    std::string exe = ExePath();
+                    char handoverArg[] = "-handover";
+                    char* args[] = { exe.data(), handoverArg, nullptr };
+                    MarkExiting();
+                    pid_t pid;
+                    if (!exe.empty() && posix_spawn(&pid, exe.c_str(), nullptr, nullptr, args, environ) == 0)
+                    {
+                        lighthouse::Note("steamvr detected, handing over to a full-mode instance");
+                        g_handoverToVrInstance = true;
+                        g_ticking = false;
+                    }
+                    else
+                    {
+                        g_exiting = false;
+                        lighthouse::Note("steamvr detected, but relaunch failed; staying in desktop mode");
+                    }
                 }
             }
         }
@@ -722,9 +1001,7 @@ int main(int argc, char** argv)
     ImGui::DestroyContext();
 
     lighthouse::Note("main loop exited");
-#ifdef _WIN32
     MarkExiting();
-#endif
     if (!g_exitStandbyDone && !g_desktopForced && !g_handoverToVrInstance && CalCtx.dynamicBasestationPower)
         lighthouse::StandbyAllAndWait(8000);
     lighthouse::Note("teardown");
@@ -733,19 +1010,28 @@ int main(int argc, char** argv)
     SDL_Quit();
     if (!g_desktopPreview)
         vr::VR_Shutdown();
-#ifdef _WIN32
     ReleaseInstance();
-#endif
 
     return 0;
 }
 
 static std::string SteamVRConfigDir()
 {
+#ifdef _WIN32
     const char* localAppData = getenv("LOCALAPPDATA");
     if (!localAppData)
         return {};
     std::ifstream in(std::string(localAppData) + "\\openvr\\openvrpaths.vrpath");
+#else
+    std::string xdgConfig;
+    if (const char* v = getenv("XDG_CONFIG_HOME"); v && *v)
+        xdgConfig = v;
+    else if (const char* home = getenv("HOME"); home && *home)
+        xdgConfig = std::string(home) + "/.config";
+    else
+        return {};
+    std::ifstream in(xdgConfig + "/openvr/openvrpaths.vrpath");
+#endif
     if (!in)
         return {};
     std::stringstream buf;
@@ -797,7 +1083,7 @@ static std::string LowerCase(std::string s)
 static bool IsSpaceSyncManifestPath(const std::string& path)
 {
     std::string lower = LowerCase(path);
-    const std::string tail = "spacesync\\manifest.vrmanifest";
+    const std::string tail = std::string("spacesync") + kPathSep + "manifest.vrmanifest";
     return lower.size() >= tail.size() && lower.compare(lower.size() - tail.size(), tail.size(), tail) == 0;
 }
 
@@ -810,8 +1096,12 @@ static int WriteManifestRegistration(bool install)
         return -2;
     }
 
-    std::string manifest = ExeDirectory() + "\\manifest.vrmanifest";
-    bool ok = EditJsonFile(config + "\\appconfig.json", [&](picojson::object& obj) {
+#ifndef _WIN32
+    if (install)
+        WriteLinuxManifest();
+#endif
+    std::string manifest = ManifestDirectory() + kPathSep + "manifest.vrmanifest";
+    bool ok = EditJsonFile(config + kPathSep + "appconfig.json", [&](picojson::object& obj) {
         picojson::array paths;
         auto it = obj.find("manifest_paths");
         if (it != obj.end() && it->second.is<picojson::array>())
@@ -830,9 +1120,13 @@ static int WriteManifestRegistration(bool install)
 
     if (install)
     {
-        std::string dir = config + "\\vrappconfig";
+        std::string dir = config + kPathSep + "vrappconfig";
+#ifdef _WIN32
         CreateDirectoryA(dir.c_str(), NULL);
-        ok = EditJsonFile(dir + "\\" + APP_KEY + ".vrappconfig", [](picojson::object& obj) {
+#else
+        mkdir(dir.c_str(), 0755);
+#endif
+        ok = EditJsonFile(dir + kPathSep + APP_KEY + ".vrappconfig", [](picojson::object& obj) {
             obj["autolaunch"] = picojson::value(true);
             if (obj.find("last_launch_time") == obj.end())
                 obj["last_launch_time"] = picojson::value(std::string("0"));
@@ -854,7 +1148,7 @@ static int WriteActivateMultipleDrivers()
         fprintf(stderr, "SteamVR config directory not found\n");
         return -2;
     }
-    bool ok = EditJsonFile(config + "\\steamvr.vrsettings", [](picojson::object& obj) {
+    bool ok = EditJsonFile(config + kPathSep + "steamvr.vrsettings", [](picojson::object& obj) {
         picojson::object section;
         auto it = obj.find("steamvr");
         if (it != obj.end() && it->second.is<picojson::object>())
@@ -889,9 +1183,6 @@ static auto HandleCommandLine(int argc, char** argv) -> void
         g_handoverLaunch = true;
         return;
     }
-
-    char cwd[1024] = { 0 };
-    _getcwd(cwd, sizeof(cwd));
 
     if (arg == "-openvrpath")
     {

@@ -1,11 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Added by Shinyflvres, 2026-08-25. Part of SpaceSync, a modified version of OpenVR-SpaceOverride by Nyabsi (AGPL-3.0). See NOTICE.md
+// Modified by simplyyjessie, 2026-10-03 (Linux port). See NOTICE.md
 
 #include "Sound.h"
 
+#ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <mmsystem.h>
+#else
+// Linux plays through SDL3 audio (PipeWire/Pulse/ALSA) in place of PlaySound.
+#include <SDL3/SDL.h>
+#include <chrono>
+#endif
 
 #include <condition_variable>
 #include <cstdint>
@@ -36,6 +43,7 @@ namespace sound
 		bool running = false;
 		std::string soundDir;
 
+#ifdef _WIN32
 		std::string ExeDirectory()
 		{
 			char path[MAX_PATH] = {};
@@ -44,6 +52,71 @@ namespace sound
 			size_t slash = s.find_last_of("\\/");
 			return slash == std::string::npos ? "." : s.substr(0, slash);
 		}
+
+		const char* kPathSep = "\\";
+#else
+		std::string ExeDirectory()
+		{
+			std::string s = SDL_GetBasePath() ? SDL_GetBasePath() : "./";
+			if (!s.empty() && s.back() == '/')
+				s.pop_back();
+			return s;
+		}
+
+		const char* kPathSep = "/";
+
+		SDL_AudioStream* stream = nullptr;
+		SDL_AudioSpec streamSpec = {};
+
+		// True while the cue queued under gen should keep playing.
+		bool StillCurrent(uint64_t gen)
+		{
+			std::lock_guard<std::mutex> lock(mutex);
+			return running && gen == generation;
+		}
+
+		// Blocks until the clip finishes or is superseded, matching the
+		// SND_SYNC PlaySound call on Windows.
+		void PlayBlocking(const std::vector<uint8_t>& wav, uint64_t gen)
+		{
+			SDL_AudioSpec spec;
+			Uint8* pcm = nullptr;
+			Uint32 pcmLen = 0;
+			if (!SDL_LoadWAV_IO(SDL_IOFromConstMem(wav.data(), wav.size()), true, &spec, &pcm, &pcmLen))
+				return;
+
+			if (stream && (spec.format != streamSpec.format || spec.channels != streamSpec.channels || spec.freq != streamSpec.freq))
+			{
+				SDL_DestroyAudioStream(stream);
+				stream = nullptr;
+			}
+			if (!stream)
+			{
+				stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, nullptr, nullptr);
+				if (!stream)
+				{
+					SDL_free(pcm);
+					return;
+				}
+				streamSpec = spec;
+				SDL_ResumeAudioStreamDevice(stream);
+			}
+
+			SDL_PutAudioStreamData(stream, pcm, (int)pcmLen);
+			SDL_FlushAudioStream(stream);
+			SDL_free(pcm);
+
+			while (SDL_GetAudioStreamQueued(stream) > 0)
+			{
+				if (!StillCurrent(gen))
+				{
+					SDL_ClearAudioStream(stream);
+					return;
+				}
+				std::this_thread::sleep_for(std::chrono::milliseconds(10));
+			}
+		}
+#endif
 
 		uint32_t ReadU32(const uint8_t* p) { return p[0] | (p[1] << 8) | (p[2] << 16) | (p[3] << 24); }
 		uint16_t ReadU16(const uint8_t* p) { return (uint16_t)(p[0] | (p[1] << 8)); }
@@ -108,7 +181,7 @@ namespace sound
 				return it->second.empty() ? nullptr : &it->second;
 
 			std::vector<uint8_t>& buffer = cache[name];
-			std::ifstream file(soundDir + "\\sound\\" + name + ".wav", std::ios::binary);
+			std::ifstream file(soundDir + kPathSep + "sound" + kPathSep + name + ".wav", std::ios::binary);
 			if (file)
 			{
 				buffer.assign(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
@@ -145,7 +218,11 @@ namespace sound
 						continue;
 				}
 
+#ifdef _WIN32
 				PlaySoundA(reinterpret_cast<LPCSTR>(wav->data()), nullptr, SND_MEMORY | SND_SYNC | SND_NODEFAULT);
+#else
+				PlayBlocking(*wav, gen);
+#endif
 			}
 		}
 	}
@@ -156,6 +233,10 @@ namespace sound
 		if (running)
 			return;
 		soundDir = ExeDirectory();
+#ifndef _WIN32
+		if (!SDL_InitSubSystem(SDL_INIT_AUDIO))
+			return;
+#endif
 		running = true;
 		worker = std::thread(WorkerLoop);
 	}
@@ -170,9 +251,20 @@ namespace sound
 			queue.clear();
 		}
 		wake.notify_all();
+#ifdef _WIN32
 		PlaySoundA(nullptr, nullptr, 0);
+#endif
 		if (worker.joinable())
 			worker.join();
+#ifndef _WIN32
+		// The worker has exited, so the stream is ours to free.
+		if (stream)
+		{
+			SDL_DestroyAudioStream(stream);
+			stream = nullptr;
+		}
+		SDL_QuitSubSystem(SDL_INIT_AUDIO);
+#endif
 	}
 
 	void Play(const char* name)
@@ -196,6 +288,9 @@ namespace sound
 	void Stop()
 	{
 		ClearQueue();
+#ifdef _WIN32
 		PlaySoundA(nullptr, nullptr, 0);
+#endif
+		// Linux: the generation bump in ClearQueue() makes PlayBlocking() cut the clip.
 	}
 }

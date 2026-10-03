@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Modified by Shinyflvres, 2026-08-23. Part of SpaceSync, a modified version of OpenVR-SpaceOverride by Nyabsi (AGPL-3.0). See NOTICE.md
+// Modified by simplyyjessie, 2026-10-03 (Linux port). See NOTICE.md
 
 #include "ServerTrackedDeviceProvider.h"
 #include "Logging.h"
@@ -9,6 +10,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 
 static double QpcSeconds(const LARGE_INTEGER& t)
 {
@@ -25,7 +27,7 @@ static double FilterStep(LARGE_INTEGER& lastUpdate, bool primed)
 
 	double dt = primed ? (now.QuadPart - lastUpdate.QuadPart) / (double)freq.QuadPart : 0.0;
 	lastUpdate = now;
-	if (dt <= 0.0 || isnan(dt)) dt = 1.0 / 90.0;
+	if (dt <= 0.0 || std::isnan(dt)) dt = 1.0 / 90.0;
 	if (dt > 0.1) dt = 0.1;
 	return dt;
 }

@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+// Modified by simplyyjessie, 2026-10-03 (Linux port). See NOTICE.md
 
 #pragma once
 
@@ -7,6 +8,10 @@
 
 #include <vulkan/vulkan.h>
 #include <openvr.h>
+#ifndef _WIN32
+#include <algorithm>
+#include <SDL3/SDL_vulkan.h>
+#endif
 
 #define VK_VALIDATE_RESULT(e)                                  \
     if (e != VK_SUCCESS)                                       \
@@ -66,6 +71,20 @@ static auto IsVulkanDeviceExtensionAvailable(const VkPhysicalDevice& physical_de
 
 inline bool g_skipOpenVRVulkanExtensions = false;
 
+#ifndef _WIN32
+// The desktop window needs the surface extensions of whichever windowing
+// system SDL picked (X11 or Wayland). OpenVR's list does not include them,
+// so add SDL's on top. SDL video must be initialised first.
+static auto AppendWindowSurfaceExtensions(std::vector<std::string>& result) -> void
+{
+    Uint32 count = 0;
+    const char* const* names = SDL_Vulkan_GetInstanceExtensions(&count);
+    for (Uint32 i = 0; names && i < count; i++)
+        if (std::find(result.begin(), result.end(), names[i]) == result.end())
+            result.push_back(names[i]);
+}
+#endif
+
 static auto GetVulkanInstanceExtensionsRequiredByOpenVR() -> std::vector<std::string>
 {
     std::vector<std::string> result{};
@@ -75,6 +94,8 @@ static auto GetVulkanInstanceExtensionsRequiredByOpenVR() -> std::vector<std::st
         result.push_back("VK_KHR_surface");
 #ifdef _WIN32
         result.push_back("VK_KHR_win32_surface");
+#else
+        AppendWindowSurfaceExtensions(result);
 #endif
         return result;
     }
@@ -99,6 +120,9 @@ static auto GetVulkanInstanceExtensionsRequiredByOpenVR() -> std::vector<std::st
         throw std::runtime_error("Failed to get list of extensions required by OpenVR");
     }
 
+#ifndef _WIN32
+    AppendWindowSurfaceExtensions(result);
+#endif
     return result;
 }
 

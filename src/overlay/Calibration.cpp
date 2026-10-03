@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Modified by Shinyflvres, 2026-08-23. Part of SpaceSync, a modified version of OpenVR-SpaceOverride by Nyabsi (AGPL-3.0). See NOTICE.md
+// Modified by simplyyjessie, 2026-10-03 (Linux port). See NOTICE.md
 
 #define WIN32_LEAN_AND_MEAN
 
@@ -92,7 +93,7 @@ Eigen::Vector3d RotationVector(const Eigen::Matrix3d& rot)
 double AngleFromRotationMatrix3(const Eigen::Matrix3d& rot)
 {
 	double c = (rot(0, 0) + rot(1, 1) + rot(2, 2) - 1.0) / 2.0;
-	return acos(max(-1.0, min(1.0, c)));
+	return acos((std::max)(-1.0, (std::min)(1.0, c)));
 }
 
 struct DetectionState
@@ -1627,7 +1628,7 @@ void CalibrationTick(double time)
 
 		double hmdPeak = 0;
 		for (double s : Detection.hmdSpeeds)
-			hmdPeak = max(hmdPeak, s);
+			hmdPeak = (std::max)(hmdPeak, s);
 
 		if (hmdPeak < 0.5)
 		{

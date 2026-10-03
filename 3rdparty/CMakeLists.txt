@@ -40,14 +40,19 @@ target_link_libraries(ImGui PUBLIC SDL3::SDL3 vulkan OpenVR::API)
 
 add_library(Eigen INTERFACE)
 
-target_include_directories(Eigen INTERFACE ${Eigen_ROOT})
+target_include_directories(Eigen SYSTEM INTERFACE ${Eigen_ROOT})
+# GCC 14+ rejects a bad member access in an unused template of this older Eigen.
+if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 14)
+    target_compile_options(Eigen INTERFACE -Wno-template-body)
+endif()
 
 # TODO replace PicoJSON with different impl
 add_library(PicoJSON INTERFACE)
 
 target_include_directories(PicoJSON INTERFACE ${PicoJson_ROOT})
 
-# TODO replace MinHook with rtmp or other library when targeting Linux :p
+# Linux patches the vtable slot directly (see Hooking.h), no hooking library needed.
+if (WIN32)
 add_library(MinHook STATIC
     ${MinHook_ROOT}/src/hde/hde32.c
 	${MinHook_ROOT}/src/hde/hde64.c
@@ -57,3 +62,4 @@ add_library(MinHook STATIC
 )
 
 target_include_directories(MinHook PUBLIC ${MinHook_ROOT}/include)
+endif()

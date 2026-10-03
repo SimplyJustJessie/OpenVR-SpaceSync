@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Modified by Shinyflvres, 2026-08-23. Part of SpaceSync, a modified version of OpenVR-SpaceOverride by Nyabsi (AGPL-3.0). See NOTICE.md
+// Modified by simplyyjessie, 2026-10-03 (Linux port). See NOTICE.md
 
 #pragma once
 
 #include "IPCServer.h"
+#include "PlatformTime.h"
 #include "OneEuroFilter.h"
 #include "AlignmentEstimator.h"
 #include "KalmanFilter.h"

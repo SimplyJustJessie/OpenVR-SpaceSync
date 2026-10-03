@@ -1,11 +1,20 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+// Modified by simplyyjessie, 2026-10-03 (Linux port). See NOTICE.md
 
 #pragma once
 
 #include "Logging.h"
+#ifdef _WIN32
 #include <MinHook.h>
+#endif
 #include <map>
 #include <string>
+
+#ifndef _WIN32
+// Linux has no MinHook: hooks swap the function pointer in the vtable slot
+// instead of patching the function's code (see Hooking.cpp).
+bool WriteVTableSlot(void **slot, void *value);
+#endif
 
 class IHook
 {
@@ -42,6 +51,18 @@ public:
 		// in the order they were declared in.
 		targetFunc = vtable[vtableOffset];
 
+#ifndef _WIN32
+		// Every object of the same class shares this vtable, so swapping the
+		// slot catches every call made through it.
+		originalFunc = (FuncType)targetFunc;
+		if (!WriteVTableSlot(&vtable[vtableOffset], detourFunction))
+		{
+			LOG("Failed to patch vtable for %s", name.c_str());
+			originalFunc = nullptr;
+			return false;
+		}
+		targetSlot = &vtable[vtableOffset];
+#else
 		auto err = MH_CreateHook(targetFunc, detourFunction, (LPVOID *)&originalFunc);
 		if (err != MH_OK)
 		{
@@ -56,6 +77,7 @@ public:
 			MH_RemoveHook(targetFunc);
 			return false;
 		}
+#endif
 
 		LOG("Enabled hook for %s", name.c_str());
 		enabled = true;
@@ -66,7 +88,12 @@ public:
 	{
 		if (enabled)
 		{
+#ifdef _WIN32
 			MH_RemoveHook(targetFunc);
+#else
+			WriteVTableSlot(targetSlot, targetFunc);
+			targetSlot = nullptr;
+#endif
 			enabled = false;
 		}
 	}
@@ -74,4 +101,7 @@ public:
 private:
 	bool enabled = false;
 	void* targetFunc = nullptr;
+#ifndef _WIN32
+	void** targetSlot = nullptr;
+#endif
 };

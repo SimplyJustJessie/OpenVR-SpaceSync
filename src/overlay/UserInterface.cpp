@@ -817,15 +817,31 @@ void UserInterface::RenderLighthouse()
 	return;
 #endif
 
-	lighthouse::EnsureScanning();
 
 	TextWrapped(F.regular, 13.0f, P.textMuted, maxW,
 		"Turn your basestations on, into standby, or to sleep without a Lighthouse headset. "
 		"Works with V2 basestations over Bluetooth LE.");
 	VSpace(18.0f);
 
+	if (CheckboxRow("Basestation Management",
+		"SpaceSync connects to your basestations over Bluetooth to show and switch their power state. Turn this off if you manage your basestations with another tool.",
+		&CalCtx.basestationManagement, maxW))
+	{
+		lighthouse::SetManaged(CalCtx.basestationManagement);
+		SaveProfile(CalCtx);
+	}
+
+	if (!CalCtx.basestationManagement)
+	{
+		VSpace(12.0f);
+		TextWrapped(F.regular, 12.5f, P.textDim, maxW, "Basestation management is off. SpaceSync does not connect to your basestations over Bluetooth.");
+		return;
+	}
+
+	lighthouse::EnsureScanning();
 	if (!lighthouse::Available())
 	{
+		VSpace(12.0f);
 		Text(F.regular, 13.0f, P.yellow, "Bluetooth LE is not available on this PC.");
 		VSpace(8.0f);
 		TextWrapped(F.regular, 12.5f, P.textDim, maxW, "A Bluetooth 4.0+ adapter is required to control basestations.");
@@ -833,13 +849,21 @@ void UserInterface::RenderLighthouse()
 	}
 
 	if (CheckboxRow("Dynamic Power",
-		"When enabled, SpaceSync wakes up all basestations as soon as it runs. When SpaceSync gets closed, it puts all basestations into standby.",
+		"When enabled, SpaceSync wakes up all basestations as soon as it runs. When SpaceSync gets closed, it puts all basestations into standby or sleep (see Dynamic Power Mode).",
 		&CalCtx.dynamicBasestationPower, maxW))
 	{
 		lighthouse::SetAutoWake(CalCtx.dynamicBasestationPower);
 		if (CalCtx.dynamicBasestationPower)
 			lighthouse::RequestPowerAll(lighthouse::Power::Awake);
 		SaveProfile(CalCtx);
+	}
+	if (CalCtx.dynamicBasestationPower)
+	{
+		static const char* const powerModes[] = { "Standby", "Sleep" };
+		if (DropdownRow("Dynamic Power Mode",
+			"What the basestations do when SpaceSync closes. Standby wakes up faster, sleep uses less power.",
+			&CalCtx.dynamicPowerMode, powerModes, 2, maxW))
+			SaveProfile(CalCtx);
 	}
 	VSpace(18.0f);
 
@@ -976,11 +1000,12 @@ void UserInterface::RenderClosingOverlay()
 			break;
 		}
 	}
+	const bool sleep = CalCtx.dynamicPowerMode == 1;
 	char line[256];
 	if (!station.empty())
-		std::snprintf(line, sizeof line, loc::tr("Setting basestation \"%s\" to standby..."), station.c_str());
+		std::snprintf(line, sizeof line, loc::tr(sleep ? "Setting basestation \"%s\" to sleep..." : "Setting basestation \"%s\" to standby..."), station.c_str());
 	else
-		std::snprintf(line, sizeof line, "%s", loc::tr("Setting basestations to standby..."));
+		std::snprintf(line, sizeof line, "%s", loc::tr(sleep ? "Setting basestations to sleep..." : "Setting basestations to standby..."));
 
 	const float cx = W * 0.5f;
 	const float cy = H * 0.5f;
@@ -997,7 +1022,8 @@ void UserInterface::RenderClosingOverlay()
 	dl->PathStroke(Col(P.link), 0, px(3.0f));
 
 	DrawTextCentered(dl, F.semibold, 15.0f, ImVec2(cx, cy + px(6.0f)), P.textBright, line);
-	DrawTextCentered(dl, F.regular, 12.0f, ImVec2(cx, cy + px(30.0f)), P.textMuted, "The window closes when all basestations are in standby.");
+	DrawTextCentered(dl, F.regular, 12.0f, ImVec2(cx, cy + px(30.0f)), P.textMuted,
+		sleep ? "The window closes when all basestations are asleep." : "The window closes when all basestations are in standby.");
 }
 
 void UserInterface::RenderSmoothing()

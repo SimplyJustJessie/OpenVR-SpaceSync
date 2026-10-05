@@ -108,6 +108,7 @@ namespace ui
 
 	bool CheckboxRow(const char* label, const char* hint, bool* value, float designWidth);
 	bool RadioRow(const char* label, const char* hint, bool active, float designWidth);
+	bool DropdownRow(const char* label, const char* hint, int* index, const char* const* items, int count, float designWidth);
 	void Hint(const char* text, float designWidth);
 
 	bool Slider(const char* id, double* value, double minValue, double maxValue, float designWidth);

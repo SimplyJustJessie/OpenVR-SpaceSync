@@ -85,6 +85,7 @@ namespace lighthouse
 		bool running = false;
 		bool scanning = false;
 		bool autoWake = false;
+		bool managed = true;
 		bool available = true;
 		std::string availabilityError;
 		BluetoothLEAdvertisementWatcher watcher{ nullptr };
@@ -305,6 +306,8 @@ namespace lighthouse
 			std::string name(w.begin(), w.end());
 			{
 				std::lock_guard<std::mutex> lock(mutex);
+				if (!managed)
+					return;
 				auto it = stations.find(address);
 				if (it == stations.end())
 				{
@@ -392,7 +395,7 @@ namespace lighthouse
 	{
 		{
 			std::lock_guard<std::mutex> lock(mutex);
-			if (scanning || !available)
+			if (scanning || !available || !managed)
 				return;
 		}
 		bool ok = true;
@@ -454,7 +457,7 @@ namespace lighthouse
 	{
 		{
 			std::lock_guard<std::mutex> lock(mutex);
-			if (!running)
+			if (!running || !managed)
 				return;
 			queue.push_back({ address, (int)mode });
 		}
@@ -465,7 +468,7 @@ namespace lighthouse
 	{
 		{
 			std::lock_guard<std::mutex> lock(mutex);
-			if (!running)
+			if (!running || !managed)
 				return;
 			for (auto const& kv : stations)
 				queue.push_back({ kv.first, (int)mode });
@@ -477,7 +480,7 @@ namespace lighthouse
 	{
 		{
 			std::lock_guard<std::mutex> lock(mutex);
-			if (!running)
+			if (!running || !managed)
 				return;
 			queue.push_back({ address, -1 });
 		}
@@ -489,15 +492,15 @@ namespace lighthouse
 		Log("app: %s", message);
 	}
 
-	void BeginStandbyAll()
+	void BeginPowerDownAll(Power mode)
 	{
 		size_t known = 0;
 		{
 			std::lock_guard<std::mutex> lock(mutex);
 			known = stations.size();
 		}
-		Log("exit: standby initiated for %d station(s), window stays until done", (int)known);
-		RequestPowerAll(Power::Standby);
+		Log("exit: %s initiated for %d station(s), window stays until done", mode == Power::Sleep ? "sleep" : "standby", (int)known);
+		RequestPowerAll(mode);
 	}
 
 	bool Idle()
@@ -518,7 +521,41 @@ namespace lighthouse
 		Log("auto-wake %s", enabled ? "enabled" : "disabled");
 	}
 
-	void StandbyAllAndWait(int timeoutMs)
+	void SetManaged(bool enabled)
+	{
+		BluetoothLEAdvertisementWatcher stopping{ nullptr };
+		{
+			std::lock_guard<std::mutex> lock(mutex);
+			if (managed == enabled)
+				return;
+			managed = enabled;
+			if (!enabled)
+			{
+				queue.clear();
+				stations.clear();
+				passive.clear();
+				if (scanning)
+					stopping = watcher;
+				watcher = nullptr;
+				scanning = false;
+			}
+		}
+		try
+		{
+			if (stopping)
+				stopping.Stop();
+		}
+		catch (...) {}
+		Log("basestation management %s", enabled ? "enabled" : "disabled, bluetooth scanning stopped");
+	}
+
+	bool Managed()
+	{
+		std::lock_guard<std::mutex> lock(mutex);
+		return managed;
+	}
+
+	void PowerDownAllAndWait(Power mode, int timeoutMs)
 	{
 		size_t known = 0;
 		{
@@ -528,8 +565,9 @@ namespace lighthouse
 		int budget = (int)known * 6000;
 		if (budget < timeoutMs) budget = timeoutMs;
 		timeoutMs = budget;
-		Log("exit: sending standby to %d known station(s), budget %d ms", (int)known, timeoutMs);
-		RequestPowerAll(Power::Standby);
+		const char* what = mode == Power::Sleep ? "sleep" : "standby";
+		Log("exit: sending %s to %d known station(s), budget %d ms", what, (int)known, timeoutMs);
+		RequestPowerAll(mode);
 		auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeoutMs);
 		for (;;)
 		{
@@ -545,12 +583,12 @@ namespace lighthouse
 			}
 			if (std::chrono::steady_clock::now() > deadline)
 			{
-				Log("exit: standby wait timed out");
+				Log("exit: %s wait timed out", what);
 				return;
 			}
 			std::this_thread::sleep_for(std::chrono::milliseconds(50));
 		}
-		Log("exit: standby commands completed, verifying states");
+		Log("exit: %s commands completed, verifying states", what);
 
 		{
 			std::lock_guard<std::mutex> lock(mutex);

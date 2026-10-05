@@ -78,6 +78,8 @@ struct CalibrationContext
 	double lighthouseSmoothing = 0.0;
 	double latencyCompensation = 40.0;
 	bool dynamicBasestationPower = false;
+	int dynamicPowerMode = 0;
+	bool basestationManagement = true;
 	bool disableVoiceHelp = false;
 	int language = 0;
 

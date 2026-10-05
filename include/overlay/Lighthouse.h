@@ -32,8 +32,10 @@ namespace lighthouse
 	void RequestPowerAll(Power mode);
 	void RequestRefresh(uint64_t address);
 	void SetAutoWake(bool enabled);
-	void StandbyAllAndWait(int timeoutMs);
-	void BeginStandbyAll();
+	void SetManaged(bool enabled);
+	bool Managed();
+	void PowerDownAllAndWait(Power mode, int timeoutMs);
+	void BeginPowerDownAll(Power mode);
 	bool Idle();
 	void Note(const char* message);
 }

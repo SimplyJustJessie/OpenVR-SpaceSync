@@ -47,8 +47,10 @@ namespace lighthouse
 	void RequestPowerAll(Power) {}
 	void RequestRefresh(uint64_t) {}
 	void SetAutoWake(bool) {}
-	void StandbyAllAndWait(int) {}
-	void BeginStandbyAll() {}
+	void SetManaged(bool) {}
+	bool Managed() { return false; }
+	void PowerDownAllAndWait(Power, int) {}
+	void BeginPowerDownAll(Power) {}
 	bool Idle() { return true; }
 
 	void Note(const char* message)

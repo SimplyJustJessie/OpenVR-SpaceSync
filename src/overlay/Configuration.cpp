@@ -130,6 +130,13 @@ static void ParseProfile(CalibrationContext &ctx, std::istream &stream)
 	else
 		ctx.dynamicBasestationPower = false;
 
+	ctx.dynamicPowerMode = obj["dynPowerMode"].is<double>() && obj["dynPowerMode"].get<double>() == 1.0 ? 1 : 0;
+
+	if (obj["bsManagement"].is<bool>())
+		ctx.basestationManagement = obj["bsManagement"].get<bool>();
+	else
+		ctx.basestationManagement = true;
+
 	if (obj["lhSmoothing"].is<double>())
 	{
 		ctx.lighthouseSmoothing = obj["lhSmoothing"].get<double>();
@@ -308,6 +315,9 @@ static void WriteProfile(CalibrationContext &ctx, std::ostream &out)
 	profile["noHeadTracker"].set<bool>(ctx.noHeadTracker);
 	profile["mountRefined"].set<bool>(ctx.mountRefined);
 	profile["dynPower"].set<bool>(ctx.dynamicBasestationPower);
+	double dynPowerMode = (double)ctx.dynamicPowerMode;
+	profile["dynPowerMode"].set<double>(dynPowerMode);
+	profile["bsManagement"].set<bool>(ctx.basestationManagement);
 	double lhSmoothing = ctx.lighthouseSmoothing;
 	profile["lhSmoothing"].set<double>(lhSmoothing);
 	double latencyComp = ctx.latencyCompensation;

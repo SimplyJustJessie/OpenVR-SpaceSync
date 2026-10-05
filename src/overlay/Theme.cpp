@@ -560,6 +560,106 @@ namespace ui
 		return OptionRow(label, hint, true, active, designWidth);
 	}
 
+	bool DropdownRow(const char* label, const char* hint, int* index, const char* const* items, int count, float designWidth)
+	{
+		hint = loc::tr(hint);
+		const float comboW = 170.0f;
+		const float padY = px(11.0f);
+		const float w = px(designWidth);
+		const float textW = designWidth - comboW - 16.0f;
+
+		ImVec2 labelSize = TextSize(F.regular, 13.0f, label);
+		ImVec2 hintSize = (hint && *hint) ? TextSize(F.regular, 12.0f, hint, textW) : ImVec2(0, 0);
+		float textH = labelSize.y + ((hint && *hint) ? px(3.0f) + hintSize.y : 0.0f);
+		const float itemFont = 13.0f;
+		const float itemTextH = TextSize(F.medium, itemFont, "Ag").y;
+		const float frameH = itemTextH + 2.0f * px(9.0f);
+		float h = padY + std::max(frameH, textH) + padY;
+
+		ImVec2 p = ImGui::GetCursorScreenPos();
+		ImDrawList* dl = ImGui::GetWindowDrawList();
+		DrawText(dl, F.regular, 13.0f, ImVec2(p.x, p.y + padY), P.text, label);
+		if (hint && *hint)
+			dl->AddText(F.regular, px(12.0f), ImVec2(p.x, p.y + padY + labelSize.y + px(3.0f)), Col(P.textDim), hint, nullptr, px(textW));
+
+		int current = (*index >= 0 && *index < count) ? *index : 0;
+		bool changed = false;
+		const float r = px(4.0f);
+		const float fw = px(comboW);
+
+		auto chevron = [](ImDrawList* d, ImVec2 c, bool up, ImU32 col) {
+			float s = px(4.0f), t = px(1.5f), dir = up ? -1.0f : 1.0f;
+			d->AddLine(ImVec2(c.x - s, c.y - dir * s * 0.5f), ImVec2(c.x, c.y + dir * s * 0.5f), col, t);
+			d->AddLine(ImVec2(c.x, c.y + dir * s * 0.5f), ImVec2(c.x + s, c.y - dir * s * 0.5f), col, t);
+		};
+
+		ImGui::PushID(label);
+		const bool wasOpen = ImGui::IsPopupOpen("##list");
+		ImVec2 f0(p.x + w - fw, p.y + padY);
+		ImGui::SetCursorScreenPos(f0);
+		ImGui::InvisibleButton("##frame", ImVec2(fw, frameH));
+		bool hovered = HoverHand();
+		if (ImGui::IsItemClicked() && !wasOpen)
+			ImGui::OpenPopup("##list");
+		bool active = hovered || wasOpen;
+		ImVec2 f1(f0.x + fw, f0.y + frameH);
+		dl->AddRectFilled(f0, f1, Col(active ? P.buttonHover : P.button), r);
+		dl->AddRect(f0, f1, Col(P.borderButton), r);
+		DrawText(dl, F.medium, itemFont, ImVec2(f0.x + px(12.0f), f0.y + px(9.0f)), P.text, items[current]);
+		chevron(dl, ImVec2(f1.x - px(16.0f), f0.y + frameH * 0.5f), wasOpen, Col(active ? P.textBright : P.textButton));
+
+		const float rowH = itemTextH + 2.0f * px(8.0f);
+		const float listPad = px(4.0f);
+		ImGui::SetNextWindowPos(ImVec2(f0.x, f1.y + px(4.0f)));
+		ImGui::SetNextWindowSize(ImVec2(fw, rowH * count + 2.0f * listPad));
+		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+		ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 0.0f));
+		ImGui::PushStyleVar(ImGuiStyleVar_PopupRounding, r);
+		ImGui::PushStyleVar(ImGuiStyleVar_PopupBorderSize, 1.0f);
+		ImGui::PushStyleColor(ImGuiCol_PopupBg, ColV(P.button));
+		ImGui::PushStyleColor(ImGuiCol_Border, ColV(P.borderButton));
+		if (ImGui::BeginPopup("##list", ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse))
+		{
+			ImDrawList* pl = ImGui::GetWindowDrawList();
+			ImVec2 w0 = ImGui::GetWindowPos();
+			for (int i = 0; i < count; i++)
+			{
+				ImGui::SetCursorScreenPos(ImVec2(w0.x, w0.y + listPad + rowH * i));
+				ImVec2 r0 = ImGui::GetCursorScreenPos();
+				ImGui::PushID(i);
+				ImGui::InvisibleButton("##item", ImVec2(fw, rowH));
+				ImGui::PopID();
+				bool rowHovered = HoverHand();
+				bool selected = i == current;
+				if (rowHovered)
+					pl->AddRectFilled(ImVec2(r0.x + listPad, r0.y), ImVec2(r0.x + fw - listPad, r0.y + rowH), Col(P.stepHover), r);
+				DrawText(pl, F.medium, itemFont, ImVec2(r0.x + px(12.0f), r0.y + px(8.0f)), selected || rowHovered ? P.textBright : P.text, items[i]);
+				if (selected)
+					DrawIcon(pl, Icon::Check, ImVec2(r0.x + fw - px(16.0f), r0.y + rowH * 0.5f), 11.0f, Col(P.textBright), 1.6f);
+				if (ImGui::IsItemClicked())
+				{
+					if (i != current)
+					{
+						*index = i;
+						changed = true;
+					}
+					ImGui::CloseCurrentPopup();
+				}
+			}
+			ImGui::SetCursorScreenPos(ImVec2(w0.x, w0.y + listPad + rowH * count));
+			ImGui::Dummy(ImVec2(fw, listPad));
+			ImGui::EndPopup();
+		}
+		ImGui::PopStyleColor(2);
+		ImGui::PopStyleVar(4);
+		ImGui::PopID();
+
+		ImGui::SetCursorScreenPos(p);
+		ImGui::Dummy(ImVec2(w, h));
+		dl->AddRectFilled(ImVec2(p.x, p.y + h - 1.0f), ImVec2(p.x + w, p.y + h), Col(P.rowRule));
+		return changed;
+	}
+
 	bool Slider(const char* id, double* value, double minValue, double maxValue, float designWidth)
 	{
 		const float w = px(designWidth);
